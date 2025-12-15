@@ -156,6 +156,13 @@ void RenderImGui(RenderParams& params) {
     ImGui::Separator();
     ImGui::Text("Optimizations");
     ImGui::Checkbox("Enable Jittering", &params.enableJittering);
+
+    ImGui::Separator();
+    ImGui::Text("Translucency");
+    ImGui::SliderFloat("Translucency", &params.translucency, 0.0f, 1.0f);
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("0=厚重  1=通透(更少Alpha、更浅阴影)");
+    }
     
     ImGui::Separator();
     ImGui::Text("Camera Controls");

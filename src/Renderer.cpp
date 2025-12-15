@@ -168,8 +168,10 @@ void Renderer::CreateTransferFunctionTexture() {
     
     for (int i = 0; i < tfSize; i++) {
         float t = (float)i / (tfSize - 1);
-        // 默认：从透明蓝色到不透明白色
-        tfData[i] = glm::vec4(t, t, 1.0f, t);
+        // 更亮、更透明的云：低密度保持亮度，透明度略放缓
+        float alpha = pow(t, 0.85f) * 0.7f;
+        glm::vec3 base = glm::mix(glm::vec3(0.82f, 0.86f, 0.95f), glm::vec3(0.98f, 0.99f, 1.0f), t);
+        tfData[i] = glm::vec4(base, alpha);
     }
     
     glGenTextures(1, &transferFunctionTexture);
@@ -207,6 +209,15 @@ void Renderer::UpdateUniforms() {
     rayMarchingShader->SetVec3("lightDir", glm::normalize(renderParams.lightDir));
     rayMarchingShader->SetInt("maxSteps", renderParams.maxSteps);
     rayMarchingShader->SetBool("enableJittering", renderParams.enableJittering);
+
+    // 通透度联动映射
+    float t = glm::clamp(renderParams.translucency, 0.0f, 1.0f);
+    float alphaScale = glm::mix(0.9f, 0.6f, t);      // 越通透，整体Alpha越小
+    float shadowMin  = glm::mix(0.88f, 0.95f, t);    // 越通透，阴影最暗值越高
+    float shadowAtten= glm::mix(1.0f, 0.75f, t);     // 越通透，阴影衰减越弱
+    rayMarchingShader->SetFloat("alphaScale", alphaScale);
+    rayMarchingShader->SetFloat("shadowMin", shadowMin);
+    rayMarchingShader->SetFloat("shadowAtten", shadowAtten);
     
     // 设置摄像机矩阵
     const Camera& cam = cameraController->GetCamera();

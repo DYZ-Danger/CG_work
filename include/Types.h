@@ -15,6 +15,9 @@ struct RenderParams {
     glm::vec3 lightDir = glm::vec3(0.0f, 1.0f, 0.0f);  // 光照方向
     int maxSteps = 256;               // 最大步进次数
     bool enableJittering = true;      // 抖动采样优化
+
+    // 通透度（0=偏厚重，1=偏通透）
+    float translucency = 0.8f;
 };
 
 // 摄像机结构体

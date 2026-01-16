@@ -104,34 +104,52 @@ float computeShadow(vec3 worldPos, vec3 lightDirW, float sigmaT) {
 // 天空背景函数
 vec3 atmosphereSky(vec3 viewDir, vec3 sunDir)
 {
-    // [修复点1] 这里的 viewDir 应该是视线方向(rayDir)，sunDir 应该是指向太阳的方向
     float mu = clamp(dot(viewDir, sunDir), -1.0, 1.0);
-    
-    // 增强散射系数，让天空更明显
-    vec3 betaR = vec3(0.3, 0.5, 1.0);  // 蓝天色调，进一步增强
+    vec3 betaR = vec3(0.45, 0.75, 1.25);
     float rayleighPhase = 3.0 / (16.0 * PI) * (1.0 + mu * mu);
-    
     float g = 0.76;
     float miePhase = (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * mu, 1.5));
-    
-    // 大幅提升强度，让效果可见
-    float rayleighStrength = 2.0;   // 蓝天强度
-    float mieStrength      = 1.0;   // 雾霾/大气光晕
-    float sunIntensity     = 20.0;  // 太阳亮度
-
+    float rayleighStrength = 3.2;
+    float mieStrength      = 1.0;
+    float sunIntensity     = 2.8;
     vec3 sky = rayleighPhase * betaR * rayleighStrength +
                miePhase * vec3(0.9, 0.92, 0.95) * mieStrength;
-    
-    // 高度渐变：天顶亮、地平线暗
     float horizon = smoothstep(-0.2, 0.4, viewDir.y);
-    sky *= (0.4 + 0.6 * horizon);  // 地平线保留40%亮度
-
-    // 太阳光晕：更宽的高光+强度
-    float sunDisk = pow(max(mu, 0.0), 256.0) * sunIntensity * 3.0;      // 太阳核心更锐利
-    float sunGlow = pow(max(mu, 0.0), 6.0) * sunIntensity * 0.5;        // 太阳光晕更宽
+    sky *= (0.55 + 0.45 * horizon);
+    float sunDisk = pow(max(mu, 0.0), 256.0) * sunIntensity * 0.18;
+    float sunGlow = pow(max(mu, 0.0), 2.5) * sunIntensity * 0.22;
     sky += vec3(1.0, 0.98, 0.9) * (sunDisk + sunGlow);
-    
-    return max(sky, vec3(0.1, 0.15, 0.25));  // 最暗处保留蓝色夜空
+    return max(sky, vec3(0.18, 0.28, 0.38));
+}
+
+// 地面渲染函数：简单的水平面y=-1.5，带体积阴影、软阴影和天光反射
+vec3 renderGround(vec3 rayOrigin, vec3 rayDir, vec3 sunDir) {
+    float groundY = -1.5;
+    if (rayDir.y >= -1e-4) return vec3(0.0);
+    float t = (groundY - rayOrigin.y) / rayDir.y;
+    if (t < 0.0) return vec3(0.0);
+    vec3 hitPos = rayOrigin + rayDir * t;
+    float checker = step(0.5, mod(floor(hitPos.x * 4.0) + floor(hitPos.z * 4.0), 2.0));
+    vec3 baseColor = mix(vec3(0.85, 0.85, 0.85), vec3(0.65, 0.7, 0.8), checker);
+    // 天空反射
+    vec3 sky = atmosphereSky(normalize(reflect(rayDir, vec3(0,1,0))), sunDir);
+    // 体积阴影：从地面点沿sunDir向上采样体积密度
+    float shadow = 1.0;
+    vec3 shadowPos = hitPos + sunDir * 0.01;
+    for (int i = 0; i < 32; ++i) {
+        vec3 texCoord = (shadowPos - boxMin) / (boxMax - boxMin);
+        if (any(lessThan(texCoord, vec3(0.0))) || any(greaterThan(texCoord, vec3(1.0)))) break;
+        float d = sampleDensity(texCoord);
+        shadow *= exp(-d * 7.0); // 体积阴影衰减
+        if (shadow < 0.15) break;
+        shadowPos += sunDir * 0.045;
+    }
+    // 太阳软阴影
+    float sunShadow = clamp(dot(sunDir, vec3(0,1,0)), 0.0, 1.0);
+    float softShadow = mix(0.7, 1.0, sunShadow);
+    float totalShadow = shadow * softShadow;
+    // 混合天空反射和地面色
+    return baseColor * totalShadow * 0.7 + sky * 0.3;
 }
 
 void main() {
@@ -157,9 +175,14 @@ void main() {
     float tNear, tFar;
     // [修复点3] 如果未击中包围盒，直接渲染天空
     if (!intersectAABB(rayOrigin, rayDir, boxMin, boxMax, tNear, tFar)) {
-        // 关键修复：这里传入 rayDir (视线)，而不是 viewDir (反向)
-        vec3 skyColor = atmosphereSky(rayDir, sunDir);
-        FragColor = vec4(skyColor, 1.0);
+        // 地面渲染：如果视线朝下，优先渲染地面，否则渲染天空
+        if (rayDir.y < -0.01) {
+            vec3 groundColor = renderGround(rayOrigin, rayDir, sunDir);
+            FragColor = vec4(groundColor, 1.0);
+        } else {
+            vec3 skyColor = atmosphereSky(rayDir, sunDir);
+            FragColor = vec4(skyColor, 1.0);
+        }
         return;
     }
     
@@ -184,92 +207,88 @@ void main() {
     float traveled = jitter;
     int steps = 0;
 
-    while (traveled < rayLength && steps < maxSteps && accumulatedColor.a < 0.98) {
-        vec3 texCoord = (currentPos - boxMin) / (boxMax - boxMin);
-
-        if (any(lessThan(texCoord, vec3(0.0))) || any(greaterThan(texCoord, vec3(1.0)))) break;
-
-        float densityValue = sampleDensity(texCoord);
-        float gradMag = 0.0;
-
-        if (densityValue > threshold) {
-            // 边缘和高度衰减逻辑 (保持不变)
-            float edgeDist = min(min(texCoord.x, 1.0 - texCoord.x), min(texCoord.y, 1.0 - texCoord.y));
-            edgeDist = min(edgeDist, min(texCoord.z, 1.0 - texCoord.z));
-            float edgeFade = smoothstep(0.0, edgeFadeWidth, edgeDist);
-
-            float softDensity = smoothstep(threshold - 0.02, threshold + 0.05, densityValue);
-            float height = (currentPos.y - boxMin.y) / (boxMax.y - boxMin.y);
-            float heightFade = smoothstep(0.0, 0.2, height) * smoothstep(1.0, 0.7, height);
-            softDensity *= heightFade;
-
-            float sigmaT = absorptionCoeff * 0.9 + 0.10;
-            float alpha = 1.0 - exp(-softDensity * sigmaT * stepSize * 42.0);
-            alpha = clamp(alpha, 0.0, 1.0);
-            alpha *= edgeFade * alphaScale;
-
-            vec4 sampledColor = texture(transferFunction, densityValue);
-            sampledColor.a = alpha;
-
-            if (enableLighting && sampledColor.a > 0.01) {
-                vec3 gradient = computeGradient(texCoord);
-                float g = clamp(scatteringCoeff * 0.7, 0.0, 0.75);
-                float phase = phaseHG(dot(lightDir, viewDir), g); // 这里 lightDir 不变，因HG需要入射光线
-                float shadow = computeShadow(currentPos, normalize(lightDir), sigmaT);
-                
-                vec3 directLight = sampledColor.rgb;
-
-                if (length(gradient) > 0.02) {
-                    vec3 normal = normalize(gradient);
-                    float diff = max(dot(normal, -normalize(lightDir)), 0.0); // 漫反射修正
-                    float spec = pow(max(dot(viewDir, reflect(normalize(lightDir), normal)), 0.0), 16.0);
-                    float lighting = 0.55 + diff * 0.65 + spec * 0.22;
-                    float shadowTerm = mix(shadowMin, 1.0, shadow);
-                    directLight *= lighting * shadowTerm * (0.5 + 0.5 * phase);
-                } else {
-                    float shadowTerm = mix(shadowMin, 1.0, shadow);
-                    directLight *= shadowTerm * (0.5 + 0.5 * phase);
+    // 多重采样体渲染（N=4），每条采样光线都用自适应步长
+    int msaaSamples = 4;
+    vec4 msaaColor = vec4(0.0);
+    float msaaRadius = stepSize * 0.7;
+    for (int s = 0; s < msaaSamples; ++s) {
+        float angle = 6.2831853 * float(s) / float(msaaSamples);
+        float r = msaaRadius * (float(s) / float(msaaSamples-1));
+        vec3 offset = vec3(cos(angle), sin(angle), 0.0) * r;
+        vec3 sampleStart = startPos + rayDir * jitter + offset;
+        vec3 samplePos = sampleStart;
+        float sampleTraveled = jitter;
+        int sampleSteps = 0;
+        vec4 sampleAccum = vec4(0.0);
+        while (sampleTraveled < rayLength && sampleSteps < maxSteps && sampleAccum.a < 0.98) {
+            vec3 texCoord = (samplePos - boxMin) / (boxMax - boxMin);
+            if (any(lessThan(texCoord, vec3(0.0))) || any(greaterThan(texCoord, vec3(1.0)))) break;
+            float densityValue = sampleDensity(texCoord);
+            float gradMag = 0.0;
+            if (densityValue > threshold) {
+                float edgeDist = min(min(texCoord.x, 1.0 - texCoord.x), min(texCoord.y, 1.0 - texCoord.y));
+                edgeDist = min(edgeDist, min(texCoord.z, 1.0 - texCoord.z));
+                float edgeFade = smoothstep(0.0, edgeFadeWidth, edgeDist);
+                float softDensity = smoothstep(threshold - 0.02, threshold + 0.05, densityValue);
+                float height = (samplePos.y - boxMin.y) / (boxMax.y - boxMin.y);
+                float heightFade = smoothstep(0.0, 0.2, height) * smoothstep(1.0, 0.7, height);
+                softDensity *= heightFade;
+                float sigmaT = absorptionCoeff * 0.9 + 0.10;
+                float alpha = 1.0 - exp(-softDensity * sigmaT * stepSize * 42.0);
+                alpha = clamp(alpha, 0.0, 1.0);
+                alpha *= edgeFade * alphaScale;
+                vec4 sampledColor = texture(transferFunction, densityValue);
+                sampledColor.a = alpha;
+                if (enableLighting && sampledColor.a > 0.01) {
+                    vec3 gradient = computeGradient(texCoord);
+                    float g = clamp(scatteringCoeff * 0.7, 0.0, 0.75);
+                    float phase = phaseHG(dot(lightDir, viewDir), g);
+                    float shadow = computeShadow(samplePos, normalize(lightDir), sigmaT);
+                    vec3 directLight = sampledColor.rgb;
+                    if (length(gradient) > 0.02) {
+                        vec3 normal = normalize(gradient);
+                        float diff = max(dot(normal, -normalize(lightDir)), 0.0);
+                        float spec = pow(max(dot(viewDir, reflect(normalize(lightDir), normal)), 0.0), 16.0);
+                        float lighting = 0.55 + diff * 0.65 + spec * 0.22;
+                        float shadowTerm = mix(shadowMin, 1.0, shadow);
+                        directLight *= lighting * shadowTerm * (0.5 + 0.5 * phase);
+                    } else {
+                        float shadowTerm = mix(shadowMin, 1.0, shadow);
+                        directLight *= shadowTerm * (0.5 + 0.5 * phase);
+                    }
+                    vec3 ambientLight = skyLight * 0.6 * (1.0 - sampledColor.a * 0.5);
+                    sampledColor.rgb = directLight + ambientLight;
                 }
-
-                // 增强环境光影响，让云被天空照亮更明显
-                vec3 ambientLight = skyLight * 0.6 * (1.0 - sampledColor.a * 0.5);
-                sampledColor.rgb = directLight + ambientLight;
+                sampledColor.rgb *= sampledColor.a;
+                sampleAccum += (1.0 - sampleAccum.a) * sampledColor;
             }
-
-            sampledColor.rgb *= sampledColor.a;
-            accumulatedColor += (1.0 - accumulatedColor.a) * sampledColor;
+            // 计算梯度模长用于自适应步长
+            if (enableLighting && densityValue > threshold && (sampleSteps & 1) == 0) {
+                float o = 0.004;
+                vec3 p = clamp(texCoord, vec3(o), vec3(1.0 - o));
+                float dx = texture(volumeTexture, p + vec3(o,0,0)).r - texture(volumeTexture, p - vec3(o,0,0)).r;
+                float dy = texture(volumeTexture, p + vec3(0,o,0)).r - texture(volumeTexture, p - vec3(0,o,0)).r;
+                float dz = texture(volumeTexture, p + vec3(0,0,o)).r - texture(volumeTexture, p - vec3(0,0,o)).r;
+                gradMag = abs(dx) + abs(dy) + abs(dz);
+            }
+            float densityFactor = clamp(densityValue, 0.0, 1.0);
+            float gradFactor    = clamp(gradMag * 6.0, 0.0, 1.0);
+            float opacityFactor = 1.0 - sampleAccum.a;
+            float adaptiveStep = stepSize;
+            adaptiveStep *= mix(1.8, 0.4, densityFactor);
+            adaptiveStep *= mix(1.6, 0.6, gradFactor);
+            adaptiveStep *= mix(1.6, 0.5, 1.0 - opacityFactor);
+            float stepJ = enableJittering ? (random3(samplePos + time) - 0.5) * stepSize * 0.6 : 0.0;
+            float marchStep = clamp(adaptiveStep + stepJ, stepSize * 0.25, stepSize * 2.0);
+            samplePos += rayDir * marchStep;
+            sampleTraveled += marchStep;
+            sampleSteps++;
         }
-
-        // 计算梯度模长用于自适应步长
-        if (enableLighting && densityValue > threshold && (steps & 1) == 0) {
-            float o = 0.004;
-            vec3 p = clamp(texCoord, vec3(o), vec3(1.0 - o));
-            float dx = texture(volumeTexture, p + vec3(o,0,0)).r - texture(volumeTexture, p - vec3(o,0,0)).r;
-            float dy = texture(volumeTexture, p + vec3(0,o,0)).r - texture(volumeTexture, p - vec3(0,o,0)).r;
-            float dz = texture(volumeTexture, p + vec3(0,0,o)).r - texture(volumeTexture, p - vec3(0,0,o)).r;
-            gradMag = abs(dx) + abs(dy) + abs(dz);
-        }
-
-        // ==========================================
-        // [重要] 自适应步长 (完全保留原逻辑)
-        // ==========================================
-        float densityFactor = clamp(densityValue, 0.0, 1.0);
-        float gradFactor    = clamp(gradMag * 6.0, 0.0, 1.0);
-        float opacityFactor = 1.0 - accumulatedColor.a;
-        
-        float adaptiveStep = stepSize;
-        adaptiveStep *= mix(1.8, 0.4, densityFactor);   
-        adaptiveStep *= mix(1.6, 0.6, gradFactor);      
-        adaptiveStep *= mix(1.6, 0.5, 1.0 - opacityFactor);
-        
-        float stepJ = enableJittering ? (random3(currentPos + time) - 0.5) * stepSize * 0.6 : 0.0;
-        float marchStep = clamp(adaptiveStep + stepJ, stepSize * 0.25, stepSize * 2.0);
-        
-        currentPos += rayDir * marchStep;
-        traveled += marchStep;
-        steps++;
+        msaaColor += sampleAccum;
     }
-    
+    msaaColor /= float(msaaSamples);
+    accumulatedColor = msaaColor;
+
     // [修复点4] 背景混合：这里同样要使用 correct 的 rayDir 和 sunDir
     vec3 skyColor = atmosphereSky(rayDir, sunDir);
     vec3 finalColor = accumulatedColor.rgb + (1.0 - accumulatedColor.a) * skyColor;

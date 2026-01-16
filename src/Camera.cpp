@@ -1,6 +1,17 @@
 #include "Camera.h"
 
 CameraController::CameraController() {
+    camera.position = glm::vec3(0.0f, 0.7f, 2.5f); // 初始相机在地面之上，远离太阳
+    camera.front = glm::normalize(glm::vec3(0.25f, -0.12f, -1.0f)); // 侧向俯视
+    camera.up = glm::vec3(0.0f, 1.0f, 0.0f);
+    camera.yaw = -15.0f;
+    camera.pitch = -7.0f;
+    camera.fov = 60.0f;
+    camera.aspectRatio = 1.6f;
+    camera.nearPlane = 0.1f;
+    camera.farPlane = 100.0f;
+    camera.movementSpeed = 2.5f;
+    camera.mouseSensitivity = 0.1f;
     UpdateCameraVectors();
 }
 
@@ -57,11 +68,11 @@ void CameraController::ProcessMouseMovement(float xoffset, float yoffset, bool c
 }
 
 void CameraController::ProcessMouseScroll(float yoffset) {
-    camera.fov -= yoffset;
+    camera.fov -= yoffset * 2.0f; // 放大滚轮缩放范围
     if (camera.fov < 1.0f)
         camera.fov = 1.0f;
-    if (camera.fov > 90.0f)
-        camera.fov = 90.0f;
+    if (camera.fov > 140.0f)
+        camera.fov = 140.0f; // 允许更广视角
 }
 
 void CameraController::UpdateCameraVectors() {

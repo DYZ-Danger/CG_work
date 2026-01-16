@@ -259,28 +259,37 @@ void main() {
                     vec3 ambientLight = skyLight * 0.6 * (1.0 - sampledColor.a * 0.5);
                     sampledColor.rgb = directLight + ambientLight;
                 }
-                // 多重散射估计（优化：边界保护+权重调整+更平滑）
+                // 多重散射估计（优化：避免顶部过暗）
                 float multiScatter = 1.0;
                 if (enableLighting && sampledColor.a > 0.01) {
                     float scatterSum = 0.0;
                     int scatterSamples = 8;
                     float scatterStep = 0.07;
                     float validSamples = 0.0;
-                    float edgeFade = 1.0;
+                    
+                    // 获取当前点的高度（0到1）
+                    vec3 currentTex = (samplePos - boxMin) / (boxMax - boxMin);
+                    float currentHeight = currentTex.y;
+                    
                     for (int ms = 1; ms <= scatterSamples; ++ms) {
                         vec3 scatterPos = samplePos - rayDir * scatterStep * float(ms);
                         vec3 scatterTex = (scatterPos - boxMin) / (boxMax - boxMin);
                         // 只在体积内部采样
                         if (any(lessThan(scatterTex, vec3(0.01))) || any(greaterThan(scatterTex, vec3(0.99)))) continue;
-                        // 顶层采样点权重减弱，避免顶层过暗
-                        float yFade = smoothstep(0.98, 0.99, scatterTex.y);
-                        edgeFade = min(edgeFade, 1.0 - yFade * 0.7);
+                        
+                        // 顶部区域减少后向采样的影响，避免顶部过暗
+                        float heightWeight = 1.0;
+                        if (currentHeight > 0.85) {
+                            // 越接近顶部，越减少后向散射的影响
+                            heightWeight = 1.0 - smoothstep(0.85, 0.99, currentHeight) * 0.85;
+                        }
+                        
                         float scatterDensity = sampleDensity(scatterTex);
-                        scatterSum += scatterDensity;
+                        scatterSum += scatterDensity * heightWeight;
                         validSamples += 1.0;
                     }
                     if (validSamples > 0.0) scatterSum /= validSamples;
-                    multiScatter = exp(-scatterSum * 0.3 * edgeFade); // 衰减系数调低
+                    multiScatter = exp(-scatterSum * 0.25); // 减少衰减强度
                 }
                 sampledColor.rgb *= multiScatter;
                 sampledColor.rgb *= sampledColor.a;

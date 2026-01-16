@@ -65,16 +65,33 @@ CG_work/
 
 ### 依赖库安装
 
-在编译前需要将以下库放入 `external/` 目录：
+**自动安装（推荐）**：
 
+```powershell
+# 运行依赖库安装脚本（会自动下载 GLFW、GLM、ImGui）
+.\setup_dependencies.ps1
+```
+
+脚本会自动检测并下载缺失的外部库。GLAD 已包含在项目中。
+
+**手动安装**：
+
+如果自动安装失败，请参考 `external/README.md` 手动配置以下库：
 1. **GLFW** - https://www.glfw.org/
-2. **GLAD** - https://glad.dav1d.de/ (OpenGL 3.3, Core Profile)
-3. **GLM** - https://github.com/g-truc/glm
-4. **ImGui** - https://github.com/ocornut/imgui
+2. **GLM** - https://github.com/g-truc/glm
+3. **ImGui** - https://github.com/ocornut/imgui
+4. **GLAD** - 已包含（无需额外配置）
 
 ### 构建步骤
 
 #### Windows (Visual Studio)
+
+```powershell
+# 运行重建脚本（自动配置并编译）
+.\rebuild.ps1
+```
+
+或手动构建：
 
 ```powershell
 # 创建构建目录

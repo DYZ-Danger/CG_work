@@ -128,7 +128,7 @@ bool Renderer::LoadVolumeData(const std::string& filename, int width, int height
 
 bool Renderer::GenerateTestVolume(int size) {
     volumeData = std::make_unique<VolumeData>();
-    return volumeData->GenerateProceduralData(size, size, size);
+    return volumeData->GenerateProceduralData(256, 256, 256);
 }
 
 void Renderer::CreateFullScreenQuad() {

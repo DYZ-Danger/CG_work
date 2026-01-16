@@ -1,22 +1,34 @@
-# 快速重新构建并运行脚本
 param(
-    [switch]$Clean,     # -Clean: 完全清理重建
-    [switch]$RunOnly    # -RunOnly: 只运行不构建
+    [switch]$Clean,
+    [switch]$RunOnly
 )
 
 $ErrorActionPreference = "Stop"
 
-if ($Clean) {
-    Write-Host "完全清理重建..." -ForegroundColor Yellow
+if ($Clean -or -not (Test-Path "build")) {
+    Write-Host "Full rebuild..." -ForegroundColor Yellow
     Remove-Item -Recurse -Force "build" -ErrorAction SilentlyContinue
-    cmake -B "build" -G "MinGW Makefiles"
+    cmake -B "build"
     cmake --build "build" --config Release
 } elseif (-not $RunOnly) {
-    Write-Host "增量构建..." -ForegroundColor Cyan
+    Write-Host "Incremental build..." -ForegroundColor Cyan
+    if (-not (Test-Path "build/CMakeCache.txt")) {
+        Write-Host "First build, generating config..." -ForegroundColor Yellow
+        cmake -B "build"
+    }
     cmake --build "build" --config Release
 }
 
-Write-Host "运行程序..." -ForegroundColor Green
-Push-Location "build/bin"
-.\VolumeRenderer.exe
-Pop-Location
+Write-Host "Running program..." -ForegroundColor Green
+$exePath = "build\bin\Release\VolumeRenderer.exe"
+if (-not (Test-Path $exePath)) {
+    $exePath = "build\bin\VolumeRenderer.exe"
+}
+if (Test-Path $exePath) {
+    Push-Location (Split-Path $exePath)
+    & (Split-Path $exePath -Leaf)
+    Pop-Location
+} else {
+    Write-Host "ERROR: Executable not found" -ForegroundColor Red
+    Write-Host "Please check if build was successful" -ForegroundColor Yellow
+}

@@ -115,17 +115,20 @@ bool VolumeData::GenerateProceduralData(int size, int h, int d) {
                     float dyp = py - y;
                     float dzp = pz - z;
                     float dist = std::sqrt(dxp * dxp + dyp * dyp + dzp * dzp);
-                    minDist = std::min(minDist, dist);
+                    minDist = (minDist < dist) ? minDist : dist;
                 }
             }
         }
         // 归一化为 0..1，距离越小密度越高
         float maxDist = std::sqrt(3.0f) / freq;
-        return 1.0f - std::min(minDist / maxDist, 1.0f);
+        float ratio = minDist / maxDist;
+        return 1.0f - ((ratio < 1.0f) ? ratio : 1.0f);
     };
 
     auto smoothstep = [](float edge0, float edge1, float x) {
-        float t = std::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+        float t = (x - edge0) / (edge1 - edge0);
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
         return t * t * (3.0f - 2.0f * t);
     };
 
@@ -165,12 +168,29 @@ bool VolumeData::GenerateProceduralData(int size, int h, int d) {
                 densityValue = smoothstep(0.15f, 0.90f, densityValue);
 
                 // 高度渐变：底部稍微变薄，顶部保留体积
-                float heightFade = std::clamp((ny - 0.02f) / 0.95f, 0.0f, 1.0f);
+                float heightFade = (ny - 0.02f) / 0.95f;
+                if (heightFade < 0.0f) heightFade = 0.0f;
+                if (heightFade > 1.0f) heightFade = 1.0f;
                 heightFade = pow(heightFade, 1.05f);
                 densityValue *= heightFade;
 
-                // 覆盖率与透明度控制：加强基础振幅，让云占满立方体
-                densityValue = std::clamp((densityValue - 0.18f) * 1.15f + 0.08f, 0.0f, 1.0f);
+                // 边界淡出效果：距离边界越近，密度越低（实现边界稀疏）
+                float edgeFadeX = 1.0f - smoothstep(0.85f, 1.0f, std::abs(nx - 0.5f) * 2.0f);
+                float edgeFadeY = 1.0f - smoothstep(0.85f, 1.0f, std::abs(ny - 0.5f) * 2.0f);
+                float edgeFadeZ = 1.0f - smoothstep(0.85f, 1.0f, std::abs(nz - 0.5f) * 2.0f);
+                float edgeFade = edgeFadeX * edgeFadeY * edgeFadeZ;
+                
+                // 应用边界淡出
+                densityValue *= edgeFade;
+
+                // 体素外完全透明（密度低于阈值的设为0）
+                if (densityValue < 0.01f) {
+                    densityValue = 0.0f;
+                }
+                
+                // 确保密度值在有效范围内
+                if (densityValue < 0.0f) densityValue = 0.0f;
+                if (densityValue > 1.0f) densityValue = 1.0f;
 
                 int index = x + y * width + z * width * height;
                 data[index] = static_cast<unsigned char>(densityValue * 255.0f);

@@ -207,14 +207,18 @@ void main() {
     float traveled = jitter;
     int steps = 0;
 
-    // 多重采样体渲染（N=4），每条采样光线都用自适应步长
-    int msaaSamples = 4;
+    // 多重采样体渲染（N=2），每条采样光线都用自适应步长
+    int msaaSamples = 2;
     vec4 msaaColor = vec4(0.0);
     float msaaRadius = stepSize * 0.7;
+    // MSAA 偏移垂直于 ray
+    vec3 up = abs(rayDir.y) > 0.99 ? vec3(1,0,0) : vec3(0,1,0);
+    vec3 right = normalize(cross(rayDir, up));
+    vec3 up2   = cross(right, rayDir);
     for (int s = 0; s < msaaSamples; ++s) {
         float angle = 6.2831853 * float(s) / float(msaaSamples);
         float r = msaaRadius * (float(s) / float(msaaSamples-1));
-        vec3 offset = vec3(cos(angle), sin(angle), 0.0) * r;
+        vec3 offset = (right * cos(angle) + up2 * sin(angle)) * r;
         vec3 sampleStart = startPos + rayDir * jitter + offset;
         vec3 samplePos = sampleStart;
         float sampleTraveled = jitter;
@@ -225,97 +229,72 @@ void main() {
             if (any(lessThan(texCoord, vec3(0.0))) || any(greaterThan(texCoord, vec3(1.0)))) break;
             float densityValue = sampleDensity(texCoord);
             float gradMag = 0.0;
-            if (densityValue > threshold) {
-                float edgeDist = min(min(texCoord.x, 1.0 - texCoord.x), min(texCoord.y, 1.0 - texCoord.y));
-                edgeDist = min(edgeDist, min(texCoord.z, 1.0 - texCoord.z));
-                float edgeFade = smoothstep(0.0, edgeFadeWidth, edgeDist);
-                float softDensity = smoothstep(threshold - 0.02, threshold + 0.05, densityValue);
-                float height = (samplePos.y - boxMin.y) / (boxMax.y - boxMin.y);
-                // 修复1：顶面连续密度收敛
-                float topFade = exp(-pow(max(height - 0.85, 0.0) * 6.0, 2.0));
-                float bottomFade = smoothstep(0.0, 0.15, height);
-                float heightFade = topFade * bottomFade;
-                softDensity *= heightFade;
-                float thresholdWidth = 0.03;
-                float dither = random3(samplePos * 37.0 + time * 1.3);
-                float prob = smoothstep(threshold - thresholdWidth, threshold + thresholdWidth, densityValue);
-                // 修复3：阈值区概率透明
-                if (dither > prob) {
-                    // 当作透明
-                    float densityFactor = clamp(densityValue, 0.0, 1.0);
-                    float gradFactor    = clamp(gradMag * 6.0, 0.0, 1.0);
-                    float opacityFactor = 1.0 - sampleAccum.a;
-                    float adaptiveStep = stepSize;
-                    adaptiveStep *= mix(1.8, 0.4, densityFactor);
-                    adaptiveStep *= mix(1.6, 0.6, gradFactor);
-                    adaptiveStep *= mix(1.6, 0.5, 1.0 - opacityFactor);
-                    float height01 = (samplePos.y - boxMin.y) / (boxMax.y - boxMin.y);
-                    float jitterMask = smoothstep(0.85, 0.75, height01);
-                    float stepJ = enableJittering ? (random3(samplePos + time) - 0.5) * stepSize * 0.6 * jitterMask : 0.0;
-                    float marchStep = clamp(adaptiveStep + stepJ, stepSize * 0.25, stepSize * 2.0);
-                    samplePos += rayDir * marchStep;
-                    sampleTraveled += marchStep;
-                    sampleSteps++;
-                    continue;
-                }
-                float sigmaT = absorptionCoeff * 0.9 + 0.10;
-                float alpha = 1.0 - exp(-softDensity * sigmaT * stepSize * 42.0);
-                alpha = clamp(alpha, 0.0, 1.0);
-                alpha *= edgeFade * alphaScale;
-                vec4 sampledColor = texture(transferFunction, densityValue);
-                sampledColor.a = alpha;
-                // 多重散射估计（进一步优化：边界fade-out+密度归一化，避免边界粒子感和高密度过暗）
-                float multiScatter = 1.0;
-                if (enableLighting && sampledColor.a > 0.01) {
-                    float scatterSum = 0.0;
-                    int scatterSamples = 8;
-                    float scatterStep = 0.07;
-                    float validSamples = 0.0;
-                    float edgeFade = 1.0;
-                    for (int ms = 1; ms <= scatterSamples; ++ms) {
-                        vec3 scatterPos = samplePos - rayDir * scatterStep * float(ms);
-                        vec3 scatterTex = (scatterPos - boxMin) / (boxMax - boxMin);
-                        float border = min(min(scatterTex.x, 1.0 - scatterTex.x), min(scatterTex.y, 1.0 - scatterTex.y));
-                        border = min(border, min(scatterTex.z, 1.0 - scatterTex.z));
-                        float borderFade = smoothstep(0.0, 0.06, border); // 0~0.06 fade-out
-                        if (borderFade < 0.01) continue;
-                        float scatterDensity = sampleDensity(scatterTex);
-                        // 归一化密度，避免高密度体素过暗
-                        scatterDensity = clamp(scatterDensity, 0.0, 0.7);
-                        scatterSum += scatterDensity * borderFade;
-                        validSamples += borderFade;
-                    }
-                    if (validSamples > 0.0) scatterSum /= validSamples;
-                    // 衰减系数进一步调低，避免高密度体素过暗
-                    multiScatter = exp(-scatterSum * 0.13);
-                    // 上边界fade-out，避免粒子跳动
-                    float yFade = smoothstep(0.97, 1.0, (samplePos.y - boxMin.y) / (boxMax.y - boxMin.y));
-                    multiScatter = mix(multiScatter, 1.0, yFade);
-                }
-                sampledColor.rgb *= multiScatter;
-                if (enableLighting && sampledColor.a > 0.01) {
-                    vec3 gradient = computeGradient(texCoord);
-                    float g = clamp(scatteringCoeff * 0.7, 0.0, 0.75);
-                    float phase = phaseHG(dot(lightDir, viewDir), g);
-                    float shadow = computeShadow(samplePos, normalize(lightDir), sigmaT);
-                    vec3 directLight = sampledColor.rgb;
-                    if (length(gradient) > 0.02) {
-                        vec3 normal = normalize(gradient);
-                        float diff = max(dot(normal, -normalize(lightDir)), 0.0);
-                        float spec = pow(max(dot(viewDir, reflect(normalize(lightDir), normal)), 0.0), 16.0);
-                        float lighting = 0.55 + diff * 0.65 + spec * 0.22;
-                        float shadowTerm = mix(shadowMin, 1.0, shadow);
-                        directLight *= lighting * shadowTerm * (0.5 + 0.5 * phase);
-                    } else {
-                        float shadowTerm = mix(shadowMin, 1.0, shadow);
-                        directLight *= shadowTerm * (0.5 + 0.5 * phase);
-                    }
-                    vec3 ambientLight = skyLight * 0.6 * (1.0 - sampledColor.a * 0.5);
-                    sampledColor.rgb = directLight + ambientLight;
-                }
-                sampledColor.rgb *= sampledColor.a;
-                sampleAccum += (1.0 - sampleAccum.a) * sampledColor;
+            // 连续权重 soft
+            float soft = smoothstep(threshold - 0.03, threshold + 0.05, densityValue);
+            float softDensity = densityValue * soft;
+            float height = (samplePos.y - boxMin.y) / (boxMax.y - boxMin.y);
+            // 顶面 fade 用指数
+            float topFade = exp(-pow(max(height - 0.85, 0.0) * 6.0, 2.0));
+            softDensity *= topFade;
+            // 边界区域关闭 jitter
+            float height01 = (samplePos.y - boxMin.y) / (boxMax.y - boxMin.y);
+            float jitterMask = smoothstep(0.85, 0.70, height01);
+            float stableTime = floor(time * 30.0) / 30.0;
+            float stepJ = enableJittering ? (random3(samplePos * 37.0 + stableTime) - 0.5) * stepSize * 0.6 * jitterMask : 0.0;
+            // 阈值区概率透明
+            float prob = smoothstep(threshold - 0.03, threshold + 0.03, densityValue);
+            if (random3(samplePos * 19.7 + stableTime) > prob) {
+                float densityFactor = clamp(densityValue, 0.0, 1.0);
+                float gradFactor    = clamp(gradMag * 6.0, 0.0, 1.0);
+                float opacityFactor = 1.0 - sampleAccum.a;
+                float adaptiveStep = stepSize;
+                adaptiveStep *= mix(1.8, 0.4, densityFactor);
+                adaptiveStep *= mix(1.6, 0.6, gradFactor);
+                adaptiveStep *= mix(1.6, 0.5, 1.0 - opacityFactor);
+                // 不在边界用自适应步长
+                float edge = min(min(texCoord.x, 1.0 - texCoord.x), min(texCoord.y, 1.0 - texCoord.y));
+                edge = min(edge, min(texCoord.z, 1.0 - texCoord.z));
+                float edgeMask = smoothstep(0.08, 0.15, edge);
+                adaptiveStep = mix(stepSize, adaptiveStep, edgeMask);
+                float marchStep = clamp(adaptiveStep + stepJ, stepSize * 0.25, stepSize * 2.0);
+                samplePos += rayDir * marchStep;
+                sampleTraveled += marchStep;
+                sampleSteps++;
+                continue;
             }
+            float sigmaT = absorptionCoeff * 0.9 + 0.10;
+            float alpha = 1.0 - exp(-softDensity * sigmaT * stepSize * 42.0);
+            // alpha 上限 + 软启动
+            alpha = clamp(alpha, 0.0, 0.85);
+            alpha *= smoothstep(0.0, 0.02, softDensity);
+            float edgeDist = min(min(texCoord.x, 1.0 - texCoord.x), min(texCoord.y, 1.0 - texCoord.y));
+            edgeDist = min(edgeDist, min(texCoord.z, 1.0 - texCoord.z));
+            float edgeFade = smoothstep(0.0, edgeFadeWidth, edgeDist);
+            alpha *= edgeFade * alphaScale;
+            vec4 sampledColor = texture(transferFunction, densityValue);
+            sampledColor.a = alpha;
+            if (enableLighting && sampledColor.a > 0.01) {
+                vec3 gradient = computeGradient(texCoord);
+                float g = clamp(scatteringCoeff * 0.7, 0.0, 0.75);
+                float phase = phaseHG(dot(lightDir, viewDir), g);
+                float shadow = computeShadow(samplePos, normalize(lightDir), sigmaT);
+                vec3 directLight = sampledColor.rgb;
+                if (length(gradient) > 0.02) {
+                    vec3 normal = normalize(gradient);
+                    float diff = max(dot(normal, -normalize(lightDir)), 0.0);
+                    float spec = pow(max(dot(viewDir, reflect(normalize(lightDir), normal)), 0.0), 16.0);
+                    float lighting = 0.55 + diff * 0.65 + spec * 0.22;
+                    float shadowTerm = mix(shadowMin, 1.0, shadow);
+                    directLight *= lighting * shadowTerm * (0.5 + 0.5 * phase);
+                } else {
+                    float shadowTerm = mix(shadowMin, 1.0, shadow);
+                    directLight *= shadowTerm * (0.5 + 0.5 * phase);
+                }
+                vec3 ambientLight = skyLight * 0.6 * (1.0 - sampledColor.a * 0.5);
+                sampledColor.rgb = directLight + ambientLight;
+            }
+            sampledColor.rgb *= sampledColor.a;
+            sampleAccum += (1.0 - sampleAccum.a) * sampledColor;
             // 计算梯度模长用于自适应步长
             if (enableLighting && densityValue > threshold && (sampleSteps & 1) == 0) {
                 float o = 0.004;
@@ -332,10 +311,11 @@ void main() {
             adaptiveStep *= mix(1.8, 0.4, densityFactor);
             adaptiveStep *= mix(1.6, 0.6, gradFactor);
             adaptiveStep *= mix(1.6, 0.5, 1.0 - opacityFactor);
-            // 修复2：顶面区域禁止抖动
-            float height01 = (samplePos.y - boxMin.y) / (boxMax.y - boxMin.y);
-            float jitterMask = smoothstep(0.85, 0.75, height01);
-            float stepJ = enableJittering ? (random3(samplePos + time) - 0.5) * stepSize * 0.6 * jitterMask : 0.0;
+            // 不在边界用自适应步长
+            float edge = min(min(texCoord.x, 1.0 - texCoord.x), min(texCoord.y, 1.0 - texCoord.y));
+            edge = min(edge, min(texCoord.z, 1.0 - texCoord.z));
+            float edgeMask = smoothstep(0.08, 0.15, edge);
+            adaptiveStep = mix(stepSize, adaptiveStep, edgeMask);
             float marchStep = clamp(adaptiveStep + stepJ, stepSize * 0.25, stepSize * 2.0);
             samplePos += rayDir * marchStep;
             sampleTraveled += marchStep;

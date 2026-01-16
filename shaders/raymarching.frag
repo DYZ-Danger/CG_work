@@ -29,11 +29,23 @@ uniform mat4 invProjection;
 uniform vec3 cameraPos;
 uniform float time;
 
+// 体积尺寸
+uniform vec3 volumeSize;
+
 //常量
 const float PI = 3.14159265359;
-const vec3 boxMin = vec3(-0.5);
-const vec3 boxMax = vec3(0.5);
 const float edgeFadeWidth = 0.08;
+
+// 计算包围盒（基于体积实际尺寸）
+vec3 getBoxMin() {
+    vec3 normalizedSize = volumeSize / max(max(volumeSize.x, volumeSize.y), volumeSize.z);
+    return -normalizedSize * 0.5;
+}
+
+vec3 getBoxMax() {
+    vec3 normalizedSize = volumeSize / max(max(volumeSize.x, volumeSize.y), volumeSize.z);
+    return normalizedSize * 0.5;
+}
 
 // 随机函数（保持原样）
 float random(vec2 st) {
@@ -79,6 +91,8 @@ vec3 computeGradient(vec3 pos) {
 
 // 阴影计算
 float computeShadow(vec3 worldPos, vec3 lightDirW, float sigmaT) {
+    vec3 boxMin = getBoxMin();
+    vec3 boxMax = getBoxMax();
     float stepWorld = stepSize * 4.5;
     float trans = 1.0;
 
@@ -124,6 +138,8 @@ vec3 atmosphereSky(vec3 viewDir, vec3 sunDir)
 
 // 地面渲染函数：简单的水平面y=-1.5，带体积阴影、软阴影和天光反射
 vec3 renderGround(vec3 rayOrigin, vec3 rayDir, vec3 sunDir) {
+    vec3 boxMin = getBoxMin();
+    vec3 boxMax = getBoxMax();
     float groundY = -1.5;
     if (rayDir.y >= -1e-4) return vec3(0.0);
     float t = (groundY - rayOrigin.y) / rayDir.y;
@@ -153,6 +169,10 @@ vec3 renderGround(vec3 rayOrigin, vec3 rayDir, vec3 sunDir) {
 }
 
 void main() {
+    // 获取动态包围盒
+    vec3 boxMin = getBoxMin();
+    vec3 boxMax = getBoxMax();
+    
     // 1. 重建光线
     vec4 clipPos = vec4(TexCoord * 2.0 - 1.0, -1.0, 1.0);
     vec4 viewPos = invProjection * clipPos;

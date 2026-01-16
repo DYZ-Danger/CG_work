@@ -128,7 +128,7 @@ bool Renderer::LoadVolumeData(const std::string& filename, int width, int height
 
 bool Renderer::GenerateTestVolume(int size) {
     volumeData = std::make_unique<VolumeData>();
-    return volumeData->GenerateProceduralData(size, size, size);
+    return volumeData->GenerateProceduralData(256,128,256);
 }
 
 void Renderer::CreateFullScreenQuad() {
@@ -218,6 +218,14 @@ void Renderer::UpdateUniforms() {
     rayMarchingShader->SetFloat("alphaScale", alphaScale);
     rayMarchingShader->SetFloat("shadowMin", shadowMin);
     rayMarchingShader->SetFloat("shadowAtten", shadowAtten);
+    
+    // 设置体积尺寸（用于正确的包围盒）
+    if (volumeData) {
+        glm::vec3 volSize(volumeData->GetWidth(), volumeData->GetHeight(), volumeData->GetDepth());
+        rayMarchingShader->SetVec3("volumeSize", volSize);
+    } else {
+        rayMarchingShader->SetVec3("volumeSize", glm::vec3(1.0f, 1.0f, 1.0f));
+    }
     
     // 设置摄像机矩阵
     const Camera& cam = cameraController->GetCamera();

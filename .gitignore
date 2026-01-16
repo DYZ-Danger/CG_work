@@ -25,3 +25,7 @@ Makefile
 # OS files
 .DS_Store
 Thumbs.db
+
+#external libraries
+external/
+third_party/

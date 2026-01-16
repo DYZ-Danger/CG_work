@@ -144,25 +144,33 @@ bool VolumeData::GenerateProceduralData(int size, int h, int d) {
                 float wy = ny + warp1 * 0.6f + warp2 * 0.35f;
                 float wz = nz + warp1 * 0.8f + warp2 * 0.45f;
 
+                // Perlin FBM：生成平滑的基础云形（使用 valueNoise 作为 Perlin）
+                float perlinBase = fbm(wx * 1.8f, wy * 1.8f, wz * 1.8f);
+                perlinBase = smoothstep(0.2f, 0.8f, perlinBase);
+
                 // Worley 生成云块结构，稍微偏胖的轮廓
                 float cellular = worley(wx, wy, wz, 5.5f);
                 cellular = pow(cellular, 1.1f);
 
-                // 低频绒毛 + 高频侵蚀，避免大理石感
+                // 混合策略：Perlin 为主体（0.7），Worley 为块状补充（0.3）
+                float baseNoise = perlinBase * 0.7f + cellular * 0.3f;
+
+                // 低频绒毛 + 高频侵蚀，打破大理石感，增加自然纹理
                 float detailLow = fbm(wx * 2.5f, wy * 2.5f, wz * 2.5f);
                 float detailHigh = fbm(wx * 8.0f, wy * 8.0f, wz * 8.0f);
 
-                // 基础密度：cellular 提供体块，detailLow 提供蓬松感，detailHigh 做侵蚀
-                float densityValue = cellular * 1.05f + detailLow * 0.35f - detailHigh * 0.50f;
-                densityValue = smoothstep(0.22f, 0.85f, densityValue);
+                // 基础密度：baseNoise（Perlin+Worley混合）+ 低频细节 - 高频侵蚀
+                float densityValue = baseNoise * 1.0f + detailLow * 0.38f - detailHigh * 0.48f;
+                // 放宽 smoothstep 范围，扩大覆盖率
+                densityValue = smoothstep(0.15f, 0.90f, densityValue);
 
                 // 高度渐变：底部稍微变薄，顶部保留体积
                 float heightFade = std::clamp((ny - 0.02f) / 0.95f, 0.0f, 1.0f);
                 heightFade = pow(heightFade, 1.05f);
                 densityValue *= heightFade;
 
-                // 覆盖率与透明度控制：放宽偏置，让云占据更多体积且保持通透
-                densityValue = std::clamp((densityValue - 0.22f) * 1.05f + 0.06f, 0.0f, 1.0f);
+                // 覆盖率与透明度控制：加强基础振幅，让云占满立方体
+                densityValue = std::clamp((densityValue - 0.18f) * 1.15f + 0.08f, 0.0f, 1.0f);
 
                 int index = x + y * width + z * width * height;
                 data[index] = static_cast<unsigned char>(densityValue * 255.0f);

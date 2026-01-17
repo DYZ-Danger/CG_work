@@ -5,6 +5,8 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <iostream>
+#include <fstream>
+#include <sstream>
 
 // 全局变量
 Renderer* g_renderer = nullptr;
@@ -210,10 +212,27 @@ int main() {
     std::cout << "  Right Mouse - Look around" << std::endl;
     std::cout << "  Scroll - Zoom in/out" << std::endl;
     std::cout << "  ESC - Exit" << std::endl;
-    std::cout << "==================================" << std::endl;
     
     // 渲染参数
     RenderParams params;
+
+    // 自动读取RAW体数据分辨率
+    /*int rawWidth = 0, rawHeight = 0, rawDepth = 0;
+    {
+        std::ifstream metaFile("data/smoke.raw.meta");
+        if (metaFile) {
+            std::string line;
+            if (std::getline(metaFile, line)) {
+                std::istringstream iss(line);
+                iss >> rawWidth >> rawHeight >> rawDepth;
+            }
+        }
+    }
+    if (rawWidth > 0 && rawHeight > 0 && rawDepth > 0) {
+        g_renderer->LoadFloatRawVolume("data/smoke.raw", rawWidth, rawHeight, rawDepth);
+    } else {
+        std::cerr << "Failed to read RAW volume resolution from meta file!" << std::endl;
+    }*/
     
     // 主循环
     float lastFrameTime = 0.0f;

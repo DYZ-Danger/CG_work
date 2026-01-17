@@ -3,6 +3,7 @@
 #include <cmath>
 #include <fstream>
 #include <algorithm>
+#include <glm/glm.hpp>
 
 VolumeData::VolumeData() : textureID(0), width(0), height(0), depth(0) {}
 
@@ -34,6 +35,40 @@ bool VolumeData::LoadFromFile(const std::string& filename, int w, int h, int d) 
     }
     
     return CreateTexture3D(data);
+}
+
+bool VolumeData::LoadFloatRaw(const std::string& filename, int w, int h, int d) {
+    this->width = w;
+    this->height = h;
+    this->depth = d;
+    size_t dataSize = width * height * depth;
+    std::vector<float> floatData(dataSize);
+    std::ifstream file(filename, std::ios::binary);
+    std::cout << "Loading float RAW file: " << filename << std::endl;
+    if (!file.is_open()) {
+        std::cerr << "Failed to open float RAW file: " << filename << std::endl;
+        return false;
+    }
+    file.read(reinterpret_cast<char*>(floatData.data()), dataSize * sizeof(float));
+    file.close();
+    if (file.gcount() != dataSize * sizeof(float)) {
+        std::cerr << "Failed to read complete float RAW data" << std::endl;
+        return false;
+    }
+    // 归一化到0-255
+    float minV = floatData[0], maxV = floatData[0];
+    for (float v : floatData) {
+        if (v < minV) minV = v;
+        if (v > maxV) maxV = v;
+    }
+    if (fabs(maxV - minV) < 1e-6f) maxV = minV + 1.0f;
+    std::vector<unsigned char> data(dataSize);
+    for (size_t i = 0; i < dataSize; ++i) {
+        float norm = (floatData[i] - minV) / (maxV - minV);
+        data[i] = static_cast<unsigned char>(glm::clamp(norm, 0.0f, 1.0f) * 255.0f);
+    }
+    std::cout << "Float RAW data range: [" << minV << ", " << maxV << "]" << std::endl;
+    return this->CreateTexture3D(data);
 }
 
 bool VolumeData::GenerateProceduralData(int size, int h, int d) {
@@ -203,6 +238,8 @@ bool VolumeData::GenerateProceduralData(int size, int h, int d) {
 }
 
 bool VolumeData::CreateTexture3D(const std::vector<unsigned char>& data) {
+    std::cout << "GL_VENDOR = " << glGetString(GL_VENDOR) << std::endl;
+
     if (textureID != 0) {
         glDeleteTextures(1, &textureID);
     }
@@ -217,13 +254,21 @@ bool VolumeData::CreateTexture3D(const std::vector<unsigned char>& data) {
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     
+    std::cout << "Binding 3D texture and uploading data..." << std::endl;
     // 上传数据到3D纹理
-    glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, width, height, depth, 
-                 0, GL_RED, GL_UNSIGNED_BYTE, data.data());
-    
+    glTexImage3D(
+        GL_TEXTURE_3D,
+        0,
+        GL_R8,                  //明确的内部格式
+        width, height, depth,
+        0,
+        GL_RED,
+        GL_UNSIGNED_BYTE,
+        data.data()
+    );
     glBindTexture(GL_TEXTURE_3D, 0);
-    
-    std::cout << "Created 3D texture: " << width << "x" << height << "x" << depth << std::endl;
+        std::cout << "Created 3D texture: " << width << "x" << height << "x" << depth << std::endl;    
+
     return true;
 }
 

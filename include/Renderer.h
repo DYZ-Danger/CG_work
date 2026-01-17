@@ -46,6 +46,9 @@ public:
     // 加载体数据
     bool LoadVolumeData(const std::string& filename, int width, int height, int depth);
     
+    // 加载float32 RAW体数据（VdbToRaw生成，自动归一化）
+    bool LoadFloatRawVolume(const std::string& filename, int width, int height, int depth);
+    
     // 生成测试用程序化体数据
     bool GenerateTestVolume(int size = 128);
     

@@ -17,6 +17,9 @@ public:
     // 生成程序化体数据（用于测试）
     bool GenerateProceduralData(int width, int height, int depth);
     
+    // 加载float32 RAW体数据（VdbToRaw生成，自动归一化）
+    bool LoadFloatRaw(const std::string& filename, int width, int height, int depth);
+    
     // 绑定3D纹理
     void Bind(GLuint textureUnit = 0) const;
     

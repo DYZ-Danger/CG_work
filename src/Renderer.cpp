@@ -56,11 +56,11 @@ bool Renderer::InitRenderer(int width, int height) {
         return false;
     }
     
-    // 生成测试体数据
+    /*// 生成测试体数据
     if (!GenerateTestVolume(256)) {
         std::cerr << "Failed to generate test volume" << std::endl;
         return false;
-    }
+    }*/
     
     // 初始化性能计时
     lastFrameTime = (float)glfwGetTime();
@@ -257,6 +257,8 @@ void Renderer::UpdateUniforms() {
     rayMarchingShader->SetVec3("lightDir", glm::normalize(renderParams.lightDir));
     rayMarchingShader->SetInt("maxSteps", renderParams.maxSteps);
     rayMarchingShader->SetBool("enableJittering", renderParams.enableJittering);
+    rayMarchingShader->SetInt("msaaSamplesUniform", renderParams.msaaSamples);
+    rayMarchingShader->SetFloat("msaaRadiusUniform", renderParams.msaaRadius);
     
 
     // 通透度联动映射

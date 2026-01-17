@@ -75,7 +75,7 @@ bool VolumeData::LoadFloatRaw(const std::string& filename, int w, int h, int d) 
     
     // 转换为字节数据 - 应用 gamma 校正增加中间值密度
     std::vector<unsigned char> data(dataSize);
-    const float gamma = 0.5f;  // < 1 会增加整体密度，可调整范围 0.3-0.7
+    const float gamma = 0.48f;  // 温和的 gamma 校正
     for (size_t i = 0; i < dataSize; ++i) {
         float norm = (floatData[i] - minV) / (maxV - minV);
         norm = glm::clamp(norm, 0.0f, 1.0f);
@@ -332,7 +332,7 @@ bool VolumeData::CreateTexture3D(const std::vector<unsigned char>& data) {
     glTexImage3D(
         GL_TEXTURE_3D,
         0,
-        GL_R16F,                  //明确的内部格式
+        GL_R8,                    //明确的内部格式 - 无符号字节
         width, height, depth,
         0,
         GL_RED,

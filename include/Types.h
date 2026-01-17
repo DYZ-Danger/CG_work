@@ -12,9 +12,13 @@ struct RenderParams {
     bool enableLighting = true;       // 是否启用光照
     float absorptionCoeff = 1.0f;     // 吸收系数
     float scatteringCoeff = 0.5f;     // 散射系数
-    glm::vec3 lightDir = glm::vec3(0.0f, 1.0f, 0.0f);  // 光照方向
+    glm::vec3 lightDir = glm::vec3(0.3f, -0.8f, 0.5f);  // 光照方向（从上方偏后照向下）
     int maxSteps = 256;               // 最大步进次数
     bool enableJittering = true;      // 抖动采样优化
+    
+    // MSAA 参数
+    int msaaSamples = 2;              // MSAA 采样数
+    float msaaRadius = 0.3f;          // MSAA 采样半径
 
     // 通透度（0=偏厚重，1=偏通透）
     float translucency = 0.8f;

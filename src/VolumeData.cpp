@@ -42,19 +42,27 @@ bool VolumeData::LoadFloatRaw(const std::string& filename, int w, int h, int d) 
     this->height = h;
     this->depth = d;
     size_t dataSize = width * height * depth;
+    
+    std::cout << "Loading float RAW file: " << filename << std::endl;
+    std::cout << "Expected dimensions: " << width << "x" << height << "x" << depth 
+              << " (Total voxels: " << dataSize << ", Bytes: " << (dataSize * sizeof(float)) << ")" << std::endl;
+    
     std::vector<float> floatData(dataSize);
     std::ifstream file(filename, std::ios::binary);
-    std::cout << "Loading float RAW file: " << filename << std::endl;
     if (!file.is_open()) {
         std::cerr << "Failed to open float RAW file: " << filename << std::endl;
         return false;
     }
+    
     file.read(reinterpret_cast<char*>(floatData.data()), dataSize * sizeof(float));
-    file.close();
-    if (file.gcount() != dataSize * sizeof(float)) {
-        std::cerr << "Failed to read complete float RAW data" << std::endl;
+    if (!file) {
+        std::cerr << "Error reading file. Expected to read " << (dataSize * sizeof(float)) 
+                  << " bytes but read " << file.gcount() << " bytes" << std::endl;
+        file.close();
         return false;
     }
+    file.close();
+    
     // 归一化到0-255
     float minV = floatData[0], maxV = floatData[0];
     for (float v : floatData) {
@@ -62,13 +70,31 @@ bool VolumeData::LoadFloatRaw(const std::string& filename, int w, int h, int d) 
         if (v > maxV) maxV = v;
     }
     if (fabs(maxV - minV) < 1e-6f) maxV = minV + 1.0f;
+    
+    std::cout << "Float RAW data range: [" << minV << ", " << maxV << "]" << std::endl;
+    
+    // 转换为字节数据 - 应用 gamma 校正增加中间值密度
     std::vector<unsigned char> data(dataSize);
+    const float gamma = 0.5f;  // < 1 会增加整体密度，可调整范围 0.3-0.7
     for (size_t i = 0; i < dataSize; ++i) {
         float norm = (floatData[i] - minV) / (maxV - minV);
-        data[i] = static_cast<unsigned char>(glm::clamp(norm, 0.0f, 1.0f) * 255.0f);
+        norm = glm::clamp(norm, 0.0f, 1.0f);
+        // 应用 gamma 校正：增加中间值的对比度
+        norm = pow(norm, gamma);
+        data[i] = static_cast<unsigned char>(norm * 255.0f);
     }
-    std::cout << "Float RAW data range: [" << minV << ", " << maxV << "]" << std::endl;
-    return this->CreateTexture3D(data);
+    
+    std::cout << "Converted to byte data, ready to create texture" << std::endl;
+    std::cout << "Byte data size: " << data.size() << std::endl;
+    std::cout << "Byte data pointer: " << (void*)data.data() << std::endl;
+    
+    bool result = this->CreateTexture3D(data);
+    
+    // 确保数据在 CreateTexture3D 完成后再释放
+    data.clear();
+    floatData.clear();
+    
+    return result;
 }
 
 bool VolumeData::GenerateProceduralData(int size, int h, int d) {
@@ -239,12 +265,42 @@ bool VolumeData::GenerateProceduralData(int size, int h, int d) {
 
 bool VolumeData::CreateTexture3D(const std::vector<unsigned char>& data) {
     std::cout << "GL_VENDOR = " << glGetString(GL_VENDOR) << std::endl;
+    
+    // 清除之前的错误状态
+    glGetError();
+    
+    // 验证纹理尺寸
+    if (width <= 0 || height <= 0 || depth <= 0) {
+        std::cerr << "Invalid texture dimensions: " << width << "x" << height << "x" << depth << std::endl;
+        return false;
+    }
+    
+    // 验证数据大小
+    size_t expectedSize = (size_t)width * height * depth;
+    if (data.size() != expectedSize) {
+        std::cerr << "Data size mismatch! Expected: " << expectedSize 
+                  << ", Got: " << data.size() << std::endl;
+        return false;
+    }
+    
+    // 检查硬件限制
+    GLint maxTexSize = 0;
+    glGetIntegerv(GL_MAX_3D_TEXTURE_SIZE, &maxTexSize);
+    std::cout << "GL_MAX_3D_TEXTURE_SIZE: " << maxTexSize << std::endl;
+    if (width > maxTexSize || height > maxTexSize || depth > maxTexSize) {
+        std::cerr << "Texture dimensions exceed hardware limit (" << maxTexSize << "): " 
+                  << width << "x" << height << "x" << depth << std::endl;
+        return false;
+    }
 
     if (textureID != 0) {
         glDeleteTextures(1, &textureID);
+        glGetError(); // 清除可能的删除错误
     }
     
     glGenTextures(1, &textureID);
+    std::cout << "Generated texture ID: " << textureID << std::endl;
+    
     glBindTexture(GL_TEXTURE_3D, textureID);
     
     // 设置纹理参数
@@ -254,7 +310,24 @@ bool VolumeData::CreateTexture3D(const std::vector<unsigned char>& data) {
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     
+    GLenum paramErr = glGetError();
+    if (paramErr != GL_NO_ERROR) {
+        std::cerr << "OpenGL error setting texture parameters: " << paramErr << std::endl;
+        glDeleteTextures(1, &textureID);
+        textureID = 0;
+        return false;
+    }
+    
+    // 设置像素对齐参数
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);  // 对于单通道字节数据
+    
     std::cout << "Binding 3D texture and uploading data..." << std::endl;
+    std::cout << "Texture dimensions: " << width << "x" << height << "x" << depth 
+              << " (Total voxels: " << expectedSize << ", Bytes: " << (expectedSize) << ")" << std::endl;
+    std::cout << "Data pointer: " << (void*)data.data() << std::endl;
+    std::cout << "About to call glTexImage3D..." << std::endl;
+    std::cout.flush();
+    
     // 上传数据到3D纹理
     glTexImage3D(
         GL_TEXTURE_3D,
@@ -266,8 +339,36 @@ bool VolumeData::CreateTexture3D(const std::vector<unsigned char>& data) {
         GL_UNSIGNED_BYTE,
         data.data()
     );
+    
+    std::cout << "glTexImage3D call completed" << std::endl;
+    std::cout.flush();
+    
+    // 立即检查错误
+    glFlush();  // 确保命令被执行
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+        std::cerr << "OpenGL error during glTexImage3D: 0x" << std::hex << err << std::dec << std::endl;
+        switch (err) {
+            case GL_OUT_OF_MEMORY:
+                std::cerr << "  Reason: GL_OUT_OF_MEMORY - Not enough GPU memory" << std::endl;
+                break;
+            case GL_INVALID_VALUE:
+                std::cerr << "  Reason: GL_INVALID_VALUE - Invalid parameter" << std::endl;
+                break;
+            case GL_INVALID_ENUM:
+                std::cerr << "  Reason: GL_INVALID_ENUM - Invalid enum value" << std::endl;
+                break;
+            default:
+                std::cerr << "  Reason: Unknown error" << std::endl;
+        }
+        glBindTexture(GL_TEXTURE_3D, 0);
+        glDeleteTextures(1, &textureID);
+        textureID = 0;
+        return false;
+    }
+    
     glBindTexture(GL_TEXTURE_3D, 0);
-        std::cout << "Created 3D texture: " << width << "x" << height << "x" << depth << std::endl;    
+    std::cout << "Successfully created 3D texture: " << width << "x" << height << "x" << depth << std::endl;    
 
     return true;
 }

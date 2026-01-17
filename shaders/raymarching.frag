@@ -18,6 +18,10 @@ uniform bool enableJittering;
 // MSAA 参数
 uniform int msaaSamplesUniform;
 uniform float msaaRadiusUniform;
+// 多重散射
+uniform bool enableMultipleScattering;
+uniform int multiScatterSteps;
+uniform float multiScatterStrength;
 // 通透度联动控制
 uniform float alphaScale;
 uniform float shadowMin;
@@ -337,6 +341,29 @@ void main() {
                 
                 vec3 ambientLight = skyLight * 0.6 * (1.0 - sampledColor.a * 0.5);
                 sampledColor.rgb = directLight + ambientLight;
+            }
+
+            // 近似多重散射（低频次、沿光向前）
+            if (enableMultipleScattering && sampledColor.a > 0.01) {
+                float extinction = absorptionCoeff + scatteringCoeff + 0.001;
+                float albedo = scatteringCoeff / extinction;
+                vec3 msDir = normalize(lightDir + rayDir * 0.35);
+                vec3 msPos = samplePos + msDir * stepSize * 2.5;
+                float trans = 1.0;
+                float msAccum = 0.0;
+                float msStep = stepSize * 2.5;
+                for (int m = 0; m < multiScatterSteps; ++m) {
+                    vec3 msTc = (msPos - boxMin) / (boxMax - boxMin);
+                    if (any(lessThan(msTc, vec3(0.0))) || any(greaterThan(msTc, vec3(1.0)))) break;
+                    float dms = sampleDensity(msTc);
+                    float atten = exp(-dms * extinction * msStep * 12.0);
+                    msAccum += dms * trans;
+                    trans *= atten;
+                    msPos += msDir * msStep;
+                    if (trans < 0.04) break;
+                }
+                float msTerm = multiScatterStrength * albedo * msAccum;
+                sampledColor.rgb += msTerm * skyLight;
             }
             
             sampledColor.rgb *= sampledColor.a;

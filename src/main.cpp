@@ -162,6 +162,12 @@ void RenderImGui(RenderParams& params) {
     ImGui::SliderFloat("MSAA Radius", &params.msaaRadius, 0.1f, 1.0f, "%.2f");
 
     ImGui::Separator();
+    ImGui::Text("Multiple Scattering");
+    ImGui::Checkbox("Enable Multi-Scatter", &params.enableMultipleScattering);
+    ImGui::SliderInt("MS Steps", &params.multiScatterSteps, 1, 8);
+    ImGui::SliderFloat("MS Strength", &params.multiScatterStrength, 0.0f, 1.0f, "%.2f");
+
+    ImGui::Separator();
     ImGui::SliderFloat("Translucency", &params.translucency, 0.0f, 1.0f);
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("0=厚重  1=通透(更少Alpha、更浅阴影)");
@@ -217,7 +223,7 @@ int main() {
     // 渲染参数
     RenderParams params;
 
-    // 自动读取RAW体数据分辨率
+    /*// 自动读取RAW体数据分辨率
     int rawWidth = 0, rawHeight = 0, rawDepth = 0;
     {
         std::ifstream metaFile("data/cloud-049.raw.meta");
@@ -233,7 +239,7 @@ int main() {
         g_renderer->LoadFloatRawVolume("data/cloud-049.raw", rawWidth, rawHeight, rawDepth);
     } else {
         std::cerr << "Failed to read RAW volume resolution from meta file!" << std::endl;
-    }
+    }*/
     
     // 主循环
     float lastFrameTime = 0.0f;

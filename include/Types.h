@@ -20,6 +20,11 @@ struct RenderParams {
     int msaaSamples = 2;              // MSAA 采样数
     float msaaRadius = 0.3f;          // MSAA 采样半径
 
+    // 多重散射估计
+    bool enableMultipleScattering = false; // 是否启用多重散射近似
+    int multiScatterSteps = 4;              // 近似步数（少量以控制性能）
+    float multiScatterStrength = 0.35f;     // 贡献权重
+
     // 通透度（0=偏厚重，1=偏通透）
     float translucency = 0.8f;
 };

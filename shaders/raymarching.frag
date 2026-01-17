@@ -365,47 +365,22 @@ void main() {
             if (enableMultipleScattering && sampledColor.a > 0.01) {
                 float extinction = absorptionCoeff + scatteringCoeff + 0.001;
                 float albedo = scatteringCoeff / extinction;
-                float g = clamp(scatteringCoeff * 0.7, 0.0, 0.75);  // 复用主循环中的g值
                 vec3 msDir = normalize(lightDir + rayDir * 0.35);
-    
-                // 添加抖动以减少噪声（使用蓝色噪声纹理）
-                vec2 msNoiseCoord = (gl_FragCoord.xy + vec2(time * 0.05, float(sampleSteps) * 0.3)) / vec2(64.0);
-                float msJitter = texture(blueNoiseTexture, fract(msNoiseCoord)).r * stepSize * 1.5;
-    
-                vec3 msPos = samplePos + msDir * (stepSize * 2.0 + msJitter);  // 调整起始偏移并添加抖动
+                vec3 msPos = samplePos + msDir * stepSize * 2.5;
                 float trans = 1.0;
                 float msAccum = 0.0;
-                float msStepBase = stepSize * 2.0;  // 基础步长稍减小以提高精度
-                int effectiveSteps = min(multiScatterSteps, 8);  // 限制最大步数以优化性能
-    
-                for (int m = 0; m < effectiveSteps; ++m) {
+                float msStep = stepSize * 2.5;
+                for (int m = 0; m < multiScatterSteps; ++m) {
                     vec3 msTc = (msPos - boxMin) / (boxMax - boxMin);
                     if (any(lessThan(msTc, vec3(0.0))) || any(greaterThan(msTc, vec3(1.0)))) break;
-        
                     float dms = sampleDensity(msTc);
-                    if (dms < 0.001) {  // 低密度区跳过计算
-                        msPos += msDir * msStepBase;
-                        continue;
-                    }
-        
-                    // 自适应步长：基于密度调整步长（高密度区步长小）
-                    float densityFactor = clamp(dms, 0.0, 1.0);
-                    float msStep = msStepBase * mix(1.5, 0.8, densityFactor);
-        
-                    // 整合HG相位函数以改善散射准确性
-                    float cosTheta = dot(msDir, viewDir);
-                    float phase = phaseHG(cosTheta, g);
-        
-                    float atten = exp(-dms * extinction * msStep * 10.0);  // 调整常量以平衡衰减（从12.0减到10.0）
-                    msAccum += dms * trans * phase * albedo;  // 整合albedo和phase到累加中，减少后续乘法
+                    float atten = exp(-dms * extinction * msStep * 12.0);
+                    msAccum += dms * trans;
                     trans *= atten;
-        
                     msPos += msDir * msStep;
-        
-                    if (trans < 0.02) break;  // 更严格的提前退出阈值（从0.04到0.02）
+                    if (trans < 0.04) break;
                 }
-    
-                float msTerm = multiScatterStrength * msAccum * 1.5;  // 增加一个乘数来放大效果（调试用，可调整或移除）
+                float msTerm = multiScatterStrength * albedo * msAccum;
                 sampledColor.rgb += msTerm * skyLight;
             }
             
@@ -415,8 +390,7 @@ void main() {
             // 计算下一次迭代的自适应步长
             float densityFactor = clamp(densityValue, 0.0, 1.0);
             float opacityFactor = 1.0 - sampleAccum.a;
-            float adaptiveStep = stepSize * mix(1.6, 0.6, densityFactor) * 
-            mix(1.5, 0.7, 1.0 - opacityFactor);
+            float adaptiveStep = stepSize * mix(1.6, 0.6, densityFactor) * mix(1.5, 0.7, 1.0 - opacityFactor);
             
             float marchStep = clamp(adaptiveStep, stepSize * 0.4, stepSize * 1.6);
             

@@ -109,7 +109,7 @@ float computeShadow(vec3 worldPos, vec3 lightDirW, float sigmaT) {
     vec3 boxMax = getBoxMax();
     float stepWorld = stepSize * 4.5;
     float trans = 1.0;
-    // 阴影抖动（更新为使用蓝色噪声纹理采样）
+    // 阴影抖动
     vec2 noiseCoord = (gl_FragCoord.xy + vec2(time * 0.1)) / vec2(64.0);  // 假设64x64纹理，添加时间偏移避免静态
     float sj = (texture(blueNoiseTexture, noiseCoord).r - 0.5) * stepWorld * 0.6;
     worldPos += lightDirW * sj;
@@ -231,7 +231,7 @@ void main() {
     vec3 currentPos = startPos + rayDir * jitter;
     float traveled = jitter;
     int steps = 0;
-    // 禁用多重采样（临时）
+    //多重采样
     int msaaSamples = msaaSamplesUniform;
     vec4 msaaColor = vec4(0.0);
     float msaaRadius = msaaRadiusUniform * stepSize;
@@ -243,12 +243,30 @@ void main() {
         float angle = 6.2831853 * float(s) / max(float(msaaSamples), 1.0);
         float r = msaaSamples > 1 ? msaaRadius * sqrt(float(s) / float(msaaSamples-1)) : 0.0;
         vec3 offset = (right * cos(angle) + up2 * sin(angle)) * r;
-        vec3 sampleStart = startPos + rayDir * jitter + offset;
+
+        // 为每个MSAA采样重新计算交点，以避免偏移导致的起始点不准确
+        vec3 msaaRayOrigin = rayOrigin + offset;
+        float msaaTNear, msaaTFar;
+        if (!intersectAABB(msaaRayOrigin, rayDir, boxMin, boxMax, msaaTNear, msaaTFar)) {
+            // 如果偏移射线未击中包围盒，使用天空颜色作为该采样的贡献
+            vec3 skyColor = atmosphereSky(rayDir, sunDir);
+            msaaColor += vec4(skyColor, 1.0);
+            continue;
+        }
+        if (msaaTNear < 0.0) msaaTNear = 0.0;
+        msaaTNear += 1e-3;
+
+        // 为每个采样计算独特的抖动，以减少相关噪点
+        vec2 msaaNoiseCoord = (gl_FragCoord.xy + vec2(float(s) * 17.0, float(s) * 23.0)) / vec2(64.0);
+        float msaaJitter = enableJittering ? texture(blueNoiseTexture, fract(msaaNoiseCoord)).r * stepSize : 0.0;
+
+        vec3 sampleStart = msaaRayOrigin + rayDir * (msaaTNear + msaaJitter);
+        float sampleRayLength = msaaTFar - msaaTNear;
         vec3 samplePos = sampleStart;
-        float sampleTraveled = jitter;
+        float sampleTraveled = msaaJitter;
         int sampleSteps = 0;
         vec4 sampleAccum = vec4(0.0);
-        while (sampleTraveled < rayLength && sampleSteps < maxSteps && sampleAccum.a < 0.98) {
+        while (sampleTraveled < sampleRayLength && sampleSteps < maxSteps && sampleAccum.a < 0.98) {
             vec3 texCoord = (samplePos - boxMin) / (boxMax - boxMin);
             
             // 安全检查
@@ -265,9 +283,9 @@ void main() {
             float distToEdge = min(min(texCoord.x, 1.0 - texCoord.x), min(texCoord.y, 1.0 - texCoord.y));
             distToEdge = min(distToEdge, min(texCoord.z, 1.0 - texCoord.z));
             
-            // 2. 增强型蓝噪声采样（添加 sampleSteps 偏移，打散屏幕空间相关性）
+            // 2. 增强型蓝噪声采样
             float stableTime = floor(time * 10.0) / 10.0;
-            vec2 noiseCoord = (gl_FragCoord.xy + vec2(stableTime * 13.0, float(sampleSteps) * 1.7)) / vec2(64.0);
+            vec2 noiseCoord = (gl_FragCoord.xy + vec2(stableTime * 13.0, float(sampleSteps) * 1.7 + float(s) * 5.3)) / vec2(64.0);
             float blueRand = texture(blueNoiseTexture, fract(noiseCoord)).r;
             
             // 3. 计算跳过概率
@@ -380,12 +398,13 @@ void main() {
             sampleTraveled += marchStep;
             sampleSteps++;
         }
+        // 如果体积不完全不透明，混合天空
+        vec3 skyColor = atmosphereSky(rayDir, sunDir);
+        sampleAccum.rgb += (1.0 - sampleAccum.a) * skyColor;
         msaaColor += sampleAccum;
     }
     msaaColor /= float(msaaSamples);
     accumulatedColor = msaaColor;
-    vec3 skyColor = atmosphereSky(rayDir, sunDir);
-    vec3 finalColor = accumulatedColor.rgb + (1.0 - accumulatedColor.a) * skyColor;
    
-    FragColor = vec4(finalColor, 1.0);
+    FragColor = vec4(accumulatedColor.rgb, 1.0);
 }

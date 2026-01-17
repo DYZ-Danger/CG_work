@@ -386,9 +386,9 @@ void main() {
                     if (dms < 0.001) {  // 低密度区跳过计算
                         msPos += msDir * msStepBase;
                         continue;
-                 }
+                    }
         
-                // 自适应步长：基于密度调整步长（高密度区步长小）
+                    // 自适应步长：基于密度调整步长（高密度区步长小）
                     float densityFactor = clamp(dms, 0.0, 1.0);
                     float msStep = msStepBase * mix(1.5, 0.8, densityFactor);
         
@@ -404,8 +404,8 @@ void main() {
         
                     if (trans < 0.02) break;  // 更严格的提前退出阈值（从0.04到0.02）
                 }
-
-                float msTerm = multiScatterStrength * msAccum;
+    
+                float msTerm = multiScatterStrength * msAccum * 1.5;  // 增加一个乘数来放大效果（调试用，可调整或移除）
                 sampledColor.rgb += msTerm * skyLight;
             }
             
@@ -415,7 +415,8 @@ void main() {
             // 计算下一次迭代的自适应步长
             float densityFactor = clamp(densityValue, 0.0, 1.0);
             float opacityFactor = 1.0 - sampleAccum.a;
-            float adaptiveStep = stepSize * mix(1.6, 0.6, densityFactor) * mix(1.5, 0.7, 1.0 - opacityFactor);
+            float adaptiveStep = stepSize * mix(1.6, 0.6, densityFactor) * 
+            mix(1.5, 0.7, 1.0 - opacityFactor);
             
             float marchStep = clamp(adaptiveStep, stepSize * 0.4, stepSize * 1.6);
             

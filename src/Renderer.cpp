@@ -2,16 +2,22 @@
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
+#define STB_IMAGE_IMPLEMENTATION
+#include "../external/stb_image.h"  // 新增：用于加载PNG纹理（确保项目中包含stb_image.h）
 
 Renderer::Renderer() 
     : screenWidth(800), screenHeight(600),
       transferFunctionTexture(0), quadVAO(0), quadVBO(0),
+      blueNoiseTexture(0),  // 新增：蓝色噪声纹理ID
       lastFrameTime(0.0f), deltaTime(0.0f), frameCount(0), fpsTimer(0.0f) {
 }
 
 Renderer::~Renderer() {
     if (transferFunctionTexture != 0) {
         glDeleteTextures(1, &transferFunctionTexture);
+    }
+    if (blueNoiseTexture != 0) {  // 新增：删除蓝色噪声纹理
+        glDeleteTextures(1, &blueNoiseTexture);
     }
     if (quadVAO != 0) {
         glDeleteVertexArrays(1, &quadVAO);
@@ -43,6 +49,12 @@ bool Renderer::InitRenderer(int width, int height) {
     
     // 创建传输函数纹理
     CreateTransferFunctionTexture();
+    
+    // 新增：加载蓝色噪声纹理
+    if (!LoadBlueNoiseTexture("data/HDR_RGBA_63.png")) {
+        std::cerr << "Failed to load blue noise texture" << std::endl;
+        return false;
+    }
     
     // 生成测试体数据
     if (!GenerateTestVolume(256)) {
@@ -92,6 +104,10 @@ void Renderer::RenderFrame() {
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_1D, transferFunctionTexture);
     
+    // 新增：绑定蓝色噪声纹理（单元2）
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, blueNoiseTexture);
+    
     // 渲染全屏四边形
     glBindVertexArray(quadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -128,7 +144,7 @@ bool Renderer::LoadVolumeData(const std::string& filename, int width, int height
 
 bool Renderer::GenerateTestVolume(int size) {
     volumeData = std::make_unique<VolumeData>();
-    return volumeData->GenerateProceduralData(256,256,256);
+    return volumeData->GenerateProceduralData(256,128,256);
 }
 
 bool Renderer::LoadFloatRawVolume(const std::string& filename, int width, int height, int depth) {
@@ -199,10 +215,37 @@ void Renderer::UpdateTransferFunctionTexture(const std::vector<glm::vec4>& color
     glBindTexture(GL_TEXTURE_1D, 0);
 }
 
+bool Renderer::LoadBlueNoiseTexture(const std::string& filename) {  // 新增：加载蓝色噪声纹理函数
+    int width, height, channels;
+    stbi_set_flip_vertically_on_load(true);
+    unsigned char* data = stbi_load(filename.c_str(), &width, &height, &channels, 4);  // 强制加载为RGBA
+    if (!data) {
+        std::cerr << "Failed to load blue noise texture: " << filename << std::endl;
+        return false;
+    }
+    
+    glGenTextures(1, &blueNoiseTexture);
+    glBindTexture(GL_TEXTURE_2D, blueNoiseTexture);
+    
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);  // 对于噪声，使用NEAREST以保持锐利
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    
+    stbi_image_free(data);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    
+    std::cout << "Loaded blue noise texture: " << filename << " (" << width << "x" << height << ")" << std::endl;
+    return true;
+}
+
 void Renderer::UpdateUniforms() {
     // 设置纹理单元
     rayMarchingShader->SetInt("volumeTexture", 0);
     rayMarchingShader->SetInt("transferFunction", 1);
+    rayMarchingShader->SetInt("blueNoiseTexture", 2);  // 新增：设置蓝色噪声纹理单元
     
     // 设置渲染参数
     rayMarchingShader->SetFloat("stepSize", renderParams.stepSize);
@@ -214,6 +257,7 @@ void Renderer::UpdateUniforms() {
     rayMarchingShader->SetVec3("lightDir", glm::normalize(renderParams.lightDir));
     rayMarchingShader->SetInt("maxSteps", renderParams.maxSteps);
     rayMarchingShader->SetBool("enableJittering", renderParams.enableJittering);
+    
 
     // 通透度联动映射
     float t = glm::clamp(renderParams.translucency, 0.0f, 1.0f);

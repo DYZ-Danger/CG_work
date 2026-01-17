@@ -5,6 +5,7 @@
 #include "Shader.h"
 #include "VolumeData.h"
 #include "Camera.h"
+#include <string>
 #include <glad/glad.h>
 #include <memory>
 #include <vector>
@@ -48,7 +49,7 @@ public:
     
     // 加载float32 RAW体数据（VdbToRaw生成，自动归一化）
     bool LoadFloatRawVolume(const std::string& filename, int width, int height, int depth);
-    
+    bool LoadBlueNoiseTexture(const std::string& filename);
     // 生成测试用程序化体数据
     bool GenerateTestVolume(int size = 128);
     
@@ -65,7 +66,7 @@ private:
     
     GLuint transferFunctionTexture;
     GLuint quadVAO, quadVBO;
-    
+    GLuint blueNoiseTexture;
     // 性能计时
     float lastFrameTime;
     float deltaTime;

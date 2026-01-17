@@ -217,9 +217,9 @@ int main() {
     RenderParams params;
 
     // 自动读取RAW体数据分辨率
-    int rawWidth = 0, rawHeight = 0, rawDepth = 0;
+    /*int rawWidth = 0, rawHeight = 0, rawDepth = 0;
     {
-        std::ifstream metaFile("data/smoke.raw.meta");
+        std::ifstream metaFile("data/smoke2.raw.meta");
         if (metaFile) {
             std::string line;
             if (std::getline(metaFile, line)) {
@@ -229,10 +229,10 @@ int main() {
         }
     }
     if (rawWidth > 0 && rawHeight > 0 && rawDepth > 0) {
-        g_renderer->LoadFloatRawVolume("data/smoke.raw", rawWidth, rawHeight, rawDepth);
+        g_renderer->LoadFloatRawVolume("data/smoke2.raw", rawWidth, rawHeight, rawDepth);
     } else {
         std::cerr << "Failed to read RAW volume resolution from meta file!" << std::endl;
-    }
+    }*/
     
     // 主循环
     float lastFrameTime = 0.0f;

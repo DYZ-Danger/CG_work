@@ -332,7 +332,7 @@ bool VolumeData::CreateTexture3D(const std::vector<unsigned char>& data) {
     glTexImage3D(
         GL_TEXTURE_3D,
         0,
-        GL_R8,                  //明确的内部格式
+        GL_R16F,                  //明确的内部格式
         width, height, depth,
         0,
         GL_RED,

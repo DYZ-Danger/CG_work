@@ -366,15 +366,17 @@ void main() {
                 float extinction = absorptionCoeff + scatteringCoeff + 0.001;
                 float albedo = scatteringCoeff / extinction;
                 float g = clamp(scatteringCoeff * 0.7, 0.0, 0.75);  // 复用主循环中的g值
-                vec3 msDir = normalize(lightDir + rayDir * 0.35);
+                float reducedSigma = sigmaT * (1.0 - g);
+                
+                float phase_ms = phaseHG(dot(lightDir, viewDir), g * 0.5);
     
                 // 添加抖动以减少噪声（使用蓝色噪声纹理）
                 vec2 msNoiseCoord = (gl_FragCoord.xy + vec2(time * 0.05, float(sampleSteps) * 0.3)) / vec2(64.0);
                 float msJitter = texture(blueNoiseTexture, fract(msNoiseCoord)).r * stepSize * 1.5;
     
+                vec3 msDir = normalize(lightDir);
                 vec3 msPos = samplePos + msDir * (stepSize * 2.0 + msJitter);  // 调整起始偏移并添加抖动
-                float trans = 1.0;
-                float msAccum = 0.0;
+                float opticalDepth = 0.0;
                 float msStepBase = stepSize * 2.0;  // 基础步长稍减小以提高精度
                 int effectiveSteps = min(multiScatterSteps, 8);  // 限制最大步数以优化性能
     
@@ -392,21 +394,17 @@ void main() {
                     float densityFactor = clamp(dms, 0.0, 1.0);
                     float msStep = msStepBase * mix(1.5, 0.8, densityFactor);
         
-                    // 整合HG相位函数以改善散射准确性
-                    float cosTheta = dot(msDir, viewDir);
-                    float phase = phaseHG(cosTheta, g);
-        
-                    float atten = exp(-dms * extinction * msStep * 10.0);  // 调整常量以平衡衰减（从12.0减到10.0）
-                    msAccum += dms * trans * phase * albedo;  // 整合albedo和phase到累加中，减少后续乘法
-                    trans *= atten;
+                    opticalDepth += dms * reducedSigma * msStep * 42.0;  // 使用与主循环一致的缩放常量，并应用reducedSigma
         
                     msPos += msDir * msStep;
         
-                    if (trans < 0.02) break;  // 更严格的提前退出阈值（从0.04到0.02）
+                    if (opticalDepth > 10.0) break;  // 提前退出阈值
                 }
     
-                float msTerm = multiScatterStrength * msAccum * 1.5;  // 增加一个乘数来放大效果（调试用，可调整或移除）
-                sampledColor.rgb += msTerm * skyLight;
+                float reducedShadow = exp(-opticalDepth);
+                float shadowTerm_ms = mix(shadowMin, 1.0, reducedShadow);
+                float msTerm = multiScatterStrength * shadowTerm_ms * (0.5 + 0.5 * phase_ms);
+                sampledColor.rgb += msTerm;
             }
             
             sampledColor.rgb *= sampledColor.a;

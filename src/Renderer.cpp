@@ -56,11 +56,11 @@ bool Renderer::InitRenderer(int width, int height) {
         return false;
     }
     
-    // 生成测试体数据
+    /*// 生成测试体数据
     if (!GenerateTestVolume(256)) {
         std::cerr << "Failed to generate test volume" << std::endl;
         return false;
-    }
+    }*/
     
     // 初始化性能计时
     lastFrameTime = (float)glfwGetTime();

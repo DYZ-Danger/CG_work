@@ -365,6 +365,7 @@ void main() {
             if (enableMultipleScattering && sampledColor.a > 0.01) {
                 float extinction = absorptionCoeff + scatteringCoeff + 0.001;
                 float albedo = scatteringCoeff / extinction;
+<<<<<<< HEAD
                 float g = clamp(scatteringCoeff * 0.7, 0.0, 0.75);  // 复用主循环中的g值
                 float reducedSigma = sigmaT * (1.0 - g);
                 
@@ -381,10 +382,18 @@ void main() {
                 int effectiveSteps = min(multiScatterSteps, 8);  // 限制最大步数以优化性能
     
                 for (int m = 0; m < effectiveSteps; ++m) {
+=======
+                vec3 msDir = normalize(lightDir + rayDir * 0.35);
+                vec3 msPos = samplePos + msDir * stepSize * 2.5;
+                float trans = 1.0;
+                float msAccum = 0.0;
+                float msStep = stepSize * 2.5;
+                for (int m = 0; m < multiScatterSteps; ++m) {
+>>>>>>> 420ae19980b51f185d9d0bb8ce100d729e24f84f
                     vec3 msTc = (msPos - boxMin) / (boxMax - boxMin);
                     if (any(lessThan(msTc, vec3(0.0))) || any(greaterThan(msTc, vec3(1.0)))) break;
-        
                     float dms = sampleDensity(msTc);
+<<<<<<< HEAD
                     if (dms < 0.001) {  // 低密度区跳过计算
                         msPos += msDir * msStepBase;
                         continue;
@@ -405,6 +414,16 @@ void main() {
                 float shadowTerm_ms = mix(shadowMin, 1.0, reducedShadow);
                 float msTerm = multiScatterStrength * shadowTerm_ms * (0.5 + 0.5 * phase_ms);
                 sampledColor.rgb += msTerm;
+=======
+                    float atten = exp(-dms * extinction * msStep * 12.0);
+                    msAccum += dms * trans;
+                    trans *= atten;
+                    msPos += msDir * msStep;
+                    if (trans < 0.04) break;
+                }
+                float msTerm = multiScatterStrength * albedo * msAccum;
+                sampledColor.rgb += msTerm * skyLight;
+>>>>>>> 420ae19980b51f185d9d0bb8ce100d729e24f84f
             }
             
             sampledColor.rgb *= sampledColor.a;
@@ -413,8 +432,7 @@ void main() {
             // 计算下一次迭代的自适应步长
             float densityFactor = clamp(densityValue, 0.0, 1.0);
             float opacityFactor = 1.0 - sampleAccum.a;
-            float adaptiveStep = stepSize * mix(1.6, 0.6, densityFactor) * 
-            mix(1.5, 0.7, 1.0 - opacityFactor);
+            float adaptiveStep = stepSize * mix(1.6, 0.6, densityFactor) * mix(1.5, 0.7, 1.0 - opacityFactor);
             
             float marchStep = clamp(adaptiveStep, stepSize * 0.4, stepSize * 1.6);
             

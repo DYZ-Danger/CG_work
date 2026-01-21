@@ -223,7 +223,7 @@ int main() {
     // 渲染参数
     RenderParams params;
 
-    /*// 自动读取RAW体数据分辨率
+    // 自动读取RAW体数据分辨率
     int rawWidth = 0, rawHeight = 0, rawDepth = 0;
     {
         std::ifstream metaFile("data/cloud-049.raw.meta");
@@ -239,7 +239,7 @@ int main() {
         g_renderer->LoadFloatRawVolume("data/cloud-049.raw", rawWidth, rawHeight, rawDepth);
     } else {
         std::cerr << "Failed to read RAW volume resolution from meta file!" << std::endl;
-    }*/
+    }
     
     // 主循环
     float lastFrameTime = 0.0f;

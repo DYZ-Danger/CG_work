@@ -7,6 +7,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <string>
 
 // 全局变量
 Renderer* g_renderer = nullptr;
@@ -174,6 +175,38 @@ void RenderImGui(RenderParams& params) {
     }
     
     ImGui::Separator();
+    ImGui::Text("Model Selection");
+    static int selectedModel = 0;
+    const char* models[] = {"Generated Test Volume","cloud-049","smoke","smoke2"};
+    ImGui::Combo("Select Model", &selectedModel, models, IM_ARRAYSIZE(models));
+    if (ImGui::Button("Load Selected Model")) {
+        if (selectedModel != 0) {
+            std::string modelPath = "data/" + std::string(models[selectedModel]) + ".raw";
+            std::string metaPath = "data/" + std::string(models[selectedModel]) + ".raw.meta";
+            // 加载 Cloud-049 RAW 数据
+            int rawWidth = 0, rawHeight = 0, rawDepth = 0;
+            std::ifstream metaFile(metaPath);
+            if (metaFile) {
+                std::string line;
+                if (std::getline(metaFile, line)) {
+                    std::istringstream iss(line);
+                    iss >> rawWidth >> rawHeight >> rawDepth;
+                }
+            }
+            if (rawWidth > 0 && rawHeight > 0 && rawDepth > 0) {
+                g_renderer->LoadFloatRawVolume(modelPath, rawWidth, rawHeight, rawDepth);
+            } else {
+                std::cerr << "Failed to read RAW volume resolution from meta file!" << std::endl;
+            }
+        } else if (selectedModel == 0) {
+            // 生成测试体积云
+            if (!g_renderer->GenerateTestVolume(256)) {
+                std::cerr << "Failed to generate test volume" << std::endl;
+            }
+        }
+    }
+    
+    ImGui::Separator();
     ImGui::Text("Camera Controls");
     ImGui::Text("WASD - Move");
     ImGui::Text("Space/Ctrl - Up/Down");
@@ -222,24 +255,6 @@ int main() {
     
     // 渲染参数
     RenderParams params;
-
-    // 自动读取RAW体数据分辨率
-    int rawWidth = 0, rawHeight = 0, rawDepth = 0;
-    {
-        std::ifstream metaFile("data/cloud-049.raw.meta");
-        if (metaFile) {
-            std::string line;
-            if (std::getline(metaFile, line)) {
-                std::istringstream iss(line);
-                iss >> rawWidth >> rawHeight >> rawDepth;
-            }
-        }
-    }
-    if (rawWidth > 0 && rawHeight > 0 && rawDepth > 0) {
-        g_renderer->LoadFloatRawVolume("data/cloud-049.raw", rawWidth, rawHeight, rawDepth);
-    } else {
-        std::cerr << "Failed to read RAW volume resolution from meta file!" << std::endl;
-    }
     
     // 主循环
     float lastFrameTime = 0.0f;

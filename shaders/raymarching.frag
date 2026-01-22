@@ -274,10 +274,6 @@ void main() {
             
             float densityValue = sampleDensity(texCoord);
             float gradMag = 0.0;
-
-            // =========================================================
-            //  核心修复：边界保护与去相关化逻辑
-            // =========================================================
             
             // 1. 计算点到最近表面的归一化距离
             float distToEdge = min(min(texCoord.x, 1.0 - texCoord.x), min(texCoord.y, 1.0 - texCoord.y));
@@ -291,7 +287,7 @@ void main() {
             // 3. 计算跳过概率
             float prob = smoothstep(threshold - 0.05, threshold + 0.05, densityValue);
             
-            // 4. 【关键】强制保护区逻辑
+            // 4. 强制保护区逻辑
             // 规则：距离边界 0.06 以内的区域，或者刚开始走的前 8 步，强制 prob = 1.0 (不跳过)
             bool isProtected = (distToEdge < 0.06) || (sampleSteps < 8);
             float effectiveProb = isProtected ? 1.0 : prob;

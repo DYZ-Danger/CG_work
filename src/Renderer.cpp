@@ -56,12 +56,6 @@ bool Renderer::InitRenderer(int width, int height) {
         return false;
     }
     
-    /*// 生成测试体数据
-    if (!GenerateTestVolume(256)) {
-        std::cerr << "Failed to generate test volume" << std::endl;
-        return false;
-    }*/
-    
     // 初始化性能计时
     lastFrameTime = (float)glfwGetTime();
     
@@ -127,10 +121,13 @@ void Renderer::SetTransferFunction(const std::vector<glm::vec4>& colors) {
 }
 
 void Renderer::Resize(int width, int height) {
+    if (width <= 0 || height <= 0) {
+        return;  // 跳过更新，防止 aspect=0
+    }
     screenWidth = width;
     screenHeight = height;
-    glViewport(0, 0, width, height);
     cameraController->SetAspectRatio((float)width / (float)height);
+    // 其他更新，如 glViewport(0, 0, width, height);
 }
 
 RenderStats Renderer::GetRenderStats() const {

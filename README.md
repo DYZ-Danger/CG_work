@@ -131,6 +131,10 @@ make -j4
 
 #### 优化选项
 - **Enable Jittering** - 抖动采样（减少条带伪影）
+- **Enable Multiple Scattering** - 多重散射近似
+
+#### 模型选择
+请先选中模型并加载
 
 ## API接口说明
 

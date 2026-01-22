@@ -30,6 +30,8 @@
 
 ```
 CG_work/
+├── assets/            #工具
+│   └── VdbToRaw.cpp   # Vdb转换为raw数据（可选）
 ├── include/           # 头文件
 │   ├── Types.h        # 数据结构定义
 │   ├── Shader.h       # Shader管理类
@@ -52,6 +54,7 @@ CG_work/
 │   ├── glm/
 │   └── imgui/
 ├── CMakeLists.txt     # CMake构建配置
+├── rebuild.ps1        # rebuild脚本（Windows）
 └── API对接.md         # API接口文档
 ```
 
@@ -71,7 +74,7 @@ CG_work/
 2. **GLAD** - https://glad.dav1d.de/ (OpenGL 3.3, Core Profile)
 3. **GLM** - https://github.com/g-truc/glm
 4. **ImGui** - https://github.com/ocornut/imgui
-
+5. **stb_image**
 ### 构建步骤
 
 #### Windows (Visual Studio)
@@ -189,10 +192,10 @@ RenderStats GetRenderStats() const;
 
 ## 注意事项
 
-- 当前版本使用程序化生成的测试数据（球形云雾）
+- 当前版本使用程序化生成的测试数据（体积云）和现有的模型。
 - 如需加载真实体数据，请修改 `VolumeData::LoadFromFile` 方法
 - 性能受 `stepSize` 和 `maxSteps` 影响较大，建议在质量和性能间平衡
-
+- 建议直接使用现有的模型，VdbToRaw工具的构建比较复杂。
 ## 参考资料
 
 - [Perlin Hypertexture](https://ohiostate.pressbooks.pub/app/uploads/sites/45/2017/09/perlin-hypertexture.pdf)
@@ -206,6 +209,4 @@ RenderStats GetRenderStats() const;
 
 ## 作者
 
-图形学大作业 - 体渲染小组
-
----
+图形学大作业 - 体渲染小组 程翔瑞 丁怡哲
